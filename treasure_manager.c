@@ -4,11 +4,14 @@
 #include <fcntl.h> //pt open, write, read, close, flags etc.
 #include <time.h> //pentru toate functiile asociate cu timpul si data, folosite la log entries
 #include <string.h> //pt operatii cu stringuri
+#include <sys/types.h>//pt operatii cu directoare
+#include <stdlib.h>//pt atoi +altele
+#include<dirent.h>//pt struct dirent si DIR
 
 //definim pentru orice director de hunt, fisier treasure, va fi folosit mai jos
 #define treasurefile "treasures"
 //definim un fisier de log
-#define logfile "huntLogger"
+#define logfile "logged_hunt"
 
 typedef struct treasure{
     int ID; //am ales tip de date int pentru a facilita simplitate si a fi mai usor de cautat
@@ -117,7 +120,7 @@ int add_treasure(char *huntID, struct treasure *newTreasure){
 
     //scriem log entry
     char statement [256];
-    sprintf(statement, "Treasure %d added by user %s",
+    sprintf(statement, "Comoara %d adaugata de catre utilizatorul %s",
     newTreasure->ID, newTreasure->username);
 
     log_entry(huntID, statement);
@@ -176,7 +179,7 @@ int remove_treasure(char *huntID, int treasureID){
     }
 
     char statement[256];
-    sprintf(statement, "Removed treasure %d", treasureID);
+    sprintf(statement, "Eliminat comoara cu ID %d", treasureID);
     log_entry(huntID, statement);
     return 0;
 }
@@ -188,17 +191,17 @@ int list_treasures(char * huntID){
     struct stat st;
 
     if(stat(path,&st) == -1){
-        printf("Hunt not found or treasures not added yet!\n");
+        printf("Hunt negasit sau nu exista comori in cadrul acestuia!\n");
         return -1;
     }
 
     printf("Hunt:%s\n", huntID);
-    printf("TReasure file size: %ld B\n", st.st_size);
+    printf("Treasure file size: %ld B\n", st.st_size);
 
     char time_buff[64];
     strftime(time_buff,sizeof(time_buff), "%Y-%m-%d %H:%M:%S", localtime(&st.st_mtime));//momentul ultimei modificari
 
-    printf("Last modification took place at: %s\n", time_buff);
+    printf("Momentul ultimei modificari: %s\n", time_buff);
 
     int fd = open(path,O_RDONLY);
     if(fd==-1){
@@ -209,13 +212,13 @@ int list_treasures(char * huntID){
     Treasure tr;
     int contor = 0;
 
-    printf("Treasures:\n");
+    printf("Comori:\n");
     printf("%-5s %-20s %-20s %-10s\n", "ID","User", "Coordinates", "Value");//aliniere header tabel
 
     printf("--------------------------------------------------------\n");
 
     while(read(fd,&tr,sizeof(Treasure))==sizeof(Treasure)){
-        printf("%-5d %20s (%-5.6f, %-5.6f) %-10d\n",tr.ID,tr.username,tr.latitude,tr.longitude,tr.value);//aliniere tabel
+        printf("%-5d %-15s (%-8.5f, %-8.5f) %10d\n",tr.ID,tr.username,tr.latitude,tr.longitude,tr.value);//aliniere tabel
         contor++;
     }
 
@@ -228,25 +231,179 @@ int list_treasures(char * huntID){
     close(fd);
 
     char statement[64];
-    sprintf(statement, "Listed all treasures from hunt %s", huntID);
+    sprintf(statement, "S-au listat toate comorile din huntul cu ID %s", huntID);
 
     log_entry(huntID, statement);
 
     return 0;
 }
 
-/*void instructiuni(){
-    printf("FOLOSIRE: ")
-}*/
+//functie helper pt a gasi comoara de afisat cu view:
+int find_treasure(char* huntID, int treasureID, Treasure* tr){//pointer catre struct treasure ca sa stocam informatii in el
+    int fd = open_treasure_file(huntID, O_RDONLY);
+    if(fd==-1) return -1;
+    int found = 0;
 
-int main(){
-    init_hunt_dir("Hunt1");
-    creare_log_symlink("Hunt1");
-    open_treasure_file("Hunt1", O_CREAT|O_APPEND);
-    struct treasure tr1;
-    tr1.ID = 10;
-    add_treasure("Hunt1", &tr1);
-    //remove_treasure("Hunt1", 10);
-    list_treasures("Hunt1");
+    while(read(fd,tr,sizeof(Treasure))==sizeof(Treasure)){
+        if (treasureID == tr->ID){
+            found = 1;
+            break;
+        }
+    }
+
+    close(fd);
+    return found ? 0:-1;
+
+}
+
+int view_treasure(char* huntID, int treasureID){
+    Treasure tr;
+    if(find_treasure(huntID, treasureID, &tr)!=0){//informatia ajunge in adresa lui tr
+        printf("Comoara cu ID %d nu a fost gasita in hunt-ul %s\n",treasureID, huntID);
+        return -1;
+    }
+
+    printf("\nDetalii comoara:\n");
+    printf("ID: %d\n", tr.ID);
+    printf("Adaugata de utilizatorul: %s\n", tr.username);
+    printf("Coordonate: %.5f, %.5f\n", tr.latitude, tr.longitude);
+    printf("Valoare: %d\n", tr.value);
+    printf("Indiciu: %s\n", tr.clue);
+
+    //log entry
+    char statement[256];
+    sprintf(statement, "Comoara cu ID %d a fost vizualizata", treasureID);
+
+    log_entry(huntID, statement);
+    return 0;
+}
+
+
+int remove_hunt(char* huntID){
+    char path[512];// cale relativa pentru continuturile fisierului
+
+    char logpath[128];
+    sprintf(logpath,"%s-%s", logfile, huntID);
+    unlink(logpath);//rupem symlinkul
+
+    struct stat st;
+    if(stat(huntID,&st)!=0){
+        perror("ERR: Stat");
+        return -1;
+    }
+
+    DIR* dr = opendir(huntID);
+    if(!dr){
+        perror("ERR: opendir");
+        return -1;
+    }
+
+    struct dirent * stdir;
+    while((stdir=readdir(dr))){
+        if(strcmp(stdir->d_name,".")==0||strcmp(stdir->d_name,"..")==0){
+            continue;//skip peste parinte si el insusi
+        }
+
+        sprintf(path,"%s/%s", huntID, stdir->d_name);
+        //momentan in cazul nostru, nu avem alte directoare in director, asa ca nu vom face parcurgere recursiva
+        if(remove(path)!=0){//se sterg fisierele din director
+            perror("ERR: REMOVE");
+            return -1;
+        }
+    }
+
+    closedir(dr);
+
+    if(rmdir(huntID)==0){//se sterge directorul GOL!
+        printf("Directorul a fost sters cu SUCCES\n");
+    }else{
+        printf("Directorul de hunt nu a fost sters\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+void instructiuni(){
+    printf("FOLOSIRE: Prin adaugarea urmatoarelor stringuri ca argumente in linie comanda;\n");
+    printf("\t\"add <huntID>\", unde huntID e string\n");
+    printf("\t\"list <huntID>\"\n");
+    printf("\t\"view <huntID> <treasureID>\", unde treasureID este un intreg\n");
+    printf("\t\"remove_treasure <huntID> <treasureID>\"\n");
+    printf("\t\"remove_hunt <huntID>\"\n");
+}
+
+int main(int argc, char** argv){
+    if(argc==1 || strcmp(argv[1],"help")==0){
+        instructiuni();
+        return 1;
+    }
+    if(strcmp(argv[1],"add")==0){
+        if(argc==2){
+            printf("huntID lipsa\n");
+            return 1;
+        }
+
+        char* huntID = argv[2];
+
+        Treasure tr;
+        printf("ID comoara: ");
+        scanf("%d", &tr.ID);
+
+        printf("Username pana la 20 de caractere: ");
+        scanf("%s", tr.username);
+        
+        printf("Coordonate GPS (sub forma [x,y]): ");
+        scanf("%lf,%lf", &tr.latitude, &tr.longitude);
+        
+        printf("Indiciu, max 200 de caractere: ");
+        getchar();
+        fgets(tr.clue, 200, stdin);
+        
+        printf("Valoare: ");
+        scanf("%d", &tr.value);
+
+        if(add_treasure(huntID, &tr)==0){
+            printf("Comoara adaugata cu succes\n");
+        }else{
+            printf("Nu s-a adaugat comoara\n");
+            return 1;
+        }
+    }else if(strcmp(argv[1],"list")==0){
+        if(argc<3){
+            printf("huntID lipsa\n");
+            return 1;
+        }
+
+        list_treasures(argv[2]);
+    }else if(strcmp(argv[1],"view")==0){
+        if(argc<4){
+            printf("huntID sau treasureID lipsa\n");
+            return 1;
+        }
+        view_treasure(argv[2],atoi(argv[3]));
+    }else if(strcmp(argv[1],"remove_hunt")==0){
+        if(argc<3){
+            printf("huntID lipsa\n");
+            return 1;
+        }
+
+        remove_hunt(argv[2]);
+    }else if(strcmp(argv[1],"remove_treasure")==0){
+        if(argc<4){
+            printf("huntID sau treasureID lipsa");
+            return 1;
+        }
+        if(remove_treasure(argv[2],atoi(argv[3]))==0){
+            printf("Comoara stearsa cu succes\n");
+        }else{
+            printf("Comoara nu a fost stearsa/gasita!\n");
+            return 1;
+        }
+    }else{
+        printf("Comanda necunoscuta: %s\n", argv[1]);
+        printf("Pentru instructiuni apelati programul fara argumente in plus sau folositi argumentul \"help\"\n");
+        return 1;
+    }
     return 0;
 }
