@@ -331,6 +331,7 @@ void instructiuni(){
     printf("\t\"view <huntID> <treasureID>\", unde treasureID este un intreg\n");
     printf("\t\"remove_treasure <huntID> <treasureID>\"\n");
     printf("\t\"remove_hunt <huntID>\"\n");
+    printf("exemplu rulare: ./treasure_manager add Hunt1\n");
 }
 
 int main(int argc, char** argv){
