@@ -72,32 +72,24 @@ int open_treasure_file(char *huntID, int flags){
 //functia de scriere de log entries, pentru a tine cont de actiunile facute
 int log_entry(char * huntID, char * statement){
     char logPath[128];
-    sprintf(logPath,"%s/%s", huntID, logfile);//obtinem filepathul pt log
+    sprintf(logPath,"%s/%s", huntID, logfile);
 
-    //deschidem fisierul de log cu flagurile: write only, create, append
     int fd = open(logPath, O_WRONLY|O_CREAT|O_APPEND, 0644);
     if(fd==-1) {
         perror("ERR: Deschidere fisier log esuata");
-        return -1;//fail
+        return -1;
     }
 
-    /*variabile time_t cu ajutorul librariei <time.h> pentru 
-    a fi folosita in functia localtime(time_t*)*/
-    time_t present = time(NULL);//obtinem timpul in secunde de la Epoch, 1970-01-01 
-    // conform paginii de MANUAL (man 2 time)
+    time_t present = time(NULL);
     char timp[64];
-    // pentru afisarea momentului actiunii am gasit functia strftime
-    strftime(timp, sizeof(timp), "%Y.%m.%d %H:%M:%S", localtime(&present));/*localtime returneaza un 
-     pointer de struct tm(broken down time, adica an, luna zi... toate separate
-    intr-un struct interpretabil)*/
-
-    //scriem entry-ul efectiv
+    strftime(timp, sizeof(timp), "%Y.%m.%d %H:%M:%S", localtime(&present));
+    
     char entry[256];
     sprintf(entry, "Moment: %s; %s\n", timp, statement);
 
     write(fd, entry, strlen(entry));
-    close(fd);//inchidem fisierul
-    return 0;//succes
+    close(fd);
+    return 0;
 }
 
 //functie pentru a adauga o comoara
