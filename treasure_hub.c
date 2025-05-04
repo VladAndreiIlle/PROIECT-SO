@@ -61,7 +61,7 @@ void start_monitor(){
         return;
     }
 
-    pid_t pid = fork();//cream procesul copil(treasure_monitor)
+    pid_t pid = fork();
 
     if(pid == -1){
         perror("FAIL FORK");
