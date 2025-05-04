@@ -1,12 +1,12 @@
 #include <stdio.h>
-#include <sys/stat.h> //pt stat, lstat, mkdir etc.
-#include <unistd.h> //pt symlink, unlink etc
-#include <fcntl.h> //pt open, write, read, close, flags etc.
-#include <time.h> //pentru toate functiile asociate cu timpul si data, folosite la log entries
-#include <string.h> //pt operatii cu stringuri
-#include <sys/types.h>//pt operatii cu directoare
-#include <stdlib.h>//pt atoi +altele
-#include<dirent.h>//pt struct dirent si DIR
+#include <sys/stat.h> 
+#include <unistd.h> 
+#include <fcntl.h> 
+#include <time.h> 
+#include <string.h> 
+#include <sys/types.h>
+#include <stdlib.h>
+#include<dirent.h>
 
 //definim pentru orice director de hunt, fisier treasure, va fi folosit mai jos
 #define treasurefile "treasures"
@@ -14,7 +14,7 @@
 #define logfile "logged_hunt"
 
 typedef struct treasure{
-    int ID; //am ales tip de date int pentru a facilita simplitate si a fi mai usor de cautat
+    int ID;
     char username[20];
     double latitude;
     double longitude;
@@ -24,11 +24,10 @@ typedef struct treasure{
 
 //functie pentru crearea de director, in cazul in care ele nu exista
 
-int init_hunt_dir(char* huntID){//am ales tip de return int pt a putea verifica ce s-a intamplat in functie
-    //voi aplica acest principiu in mai multe locuri
+int init_hunt_dir(char* huntID){
     struct stat st;
 
-    if(stat(huntID, &st)==-1){//daca are loc egalitatea cu -1, directorul nu exista, asa ca se creaza
+    if(stat(huntID, &st)==-1){
         if(mkdir(huntID, 0777)==-1){
             perror("ERR: Eroare la crearea de director");
             return -1;//cazul de esuare
@@ -47,10 +46,8 @@ int creare_log_symlink(char* huntID){
 
     sprintf(symLink, "%s-%s", logfile, huntID);//acelasi lucru dar pentru legatura simbolica
     
-    //daca deja exista, vom dezbina legatura:
     unlink(symLink);
-
-    // dupa aceasta cream legatura
+    
     if(symlink(logPath, symLink)==-1){
         perror("ERR: Crearea legaturii simbolice a esuat");
         return -1;
@@ -58,7 +55,6 @@ int creare_log_symlink(char* huntID){
     return 0;
 }
 
-//functie pentru a deschide un fisier treasure
 int open_treasure_file(char *huntID, int flags){
     char filepath[128];
     sprintf(filepath, "%s/%s", huntID, treasurefile);
@@ -69,7 +65,6 @@ int open_treasure_file(char *huntID, int flags){
     return fd;
 }
 
-//functia de scriere de log entries, pentru a tine cont de actiunile facute
 int log_entry(char * huntID, char * statement){
     char logPath[128];
     sprintf(logPath,"%s/%s", huntID, logfile);
@@ -94,23 +89,18 @@ int log_entry(char * huntID, char * statement){
 
 //functie pentru a adauga o comoara
 int add_treasure(char *huntID, struct treasure *newTreasure){
-    //pentru usurinta, initializam un hunt directory dupa id-ul dat ca parametru daca acesta nu exista
-    if(init_hunt_dir(huntID)!=0) return -1;//fail
-
-    //deschidem cu flagul de creare si append (si write only) un fisier treasure
+    if(init_hunt_dir(huntID)!=0) return -1;
     int fd = open_treasure_file(huntID, O_WRONLY|O_CREAT|O_APPEND);
-    if(fd==-1) return -1;//fail
+    if(fd==-1) return -1;
 
-    //scriem datele din structul nostru in fisier
     if(write(fd, newTreasure, sizeof(struct treasure))!=sizeof(struct treasure)){
         perror("ERR: Esuare la scrierea datelor despre comoara");
-        close(fd);//se inchide fisierul
-        return -1; //fail
+        close(fd);
+        return -1; 
     }
 
     close(fd);
-
-    //scriem log entry
+    
     char statement [256];
     sprintf(statement, "Comoara %d adaugata de catre utilizatorul %s",
     newTreasure->ID, newTreasure->username);
@@ -122,10 +112,9 @@ int add_treasure(char *huntID, struct treasure *newTreasure){
     return 0;
 }
 
-//functie pentru a sterge comori dupa ID
 int remove_treasure(char *huntID, int treasureID){
     char path[256];
-    sprintf(path,"%s/temp", huntID);//facem o cale (inlocuitoare)
+    sprintf(path,"%s/temp", huntID);
 
     int fd = open_treasure_file(huntID, O_RDONLY);
     if(fd==-1) return -1;//fail
@@ -140,14 +129,13 @@ int remove_treasure(char *huntID, int treasureID){
     Treasure tr;
     int found = 0;
 
-    //citim din fd original si scriem in temp toate comorile inafara de cea pentru stergere
-    while(read(fd,&tr,sizeof(Treasure))==sizeof(Treasure)){//se citeste cate un struct treasure !!
-        if(tr.ID!=treasureID){//doar daca nu e cel precizat in parametru se scrie in fisierul inlocuitor.
+    while(read(fd,&tr,sizeof(Treasure))==sizeof(Treasure)){
+        if(tr.ID!=treasureID){ 
             if(write(temp,&tr,sizeof(Treasure))!=sizeof(Treasure)){
                 perror("ERR: Nu s-a putut scrie in fisierul inlocuitor");
                 close(fd);
                 close(temp);
-                unlink(path);// stergere fisier temporar din file system
+                unlink(path);
                 return -1;
             }
         }else{
@@ -158,7 +146,7 @@ int remove_treasure(char *huntID, int treasureID){
     close(temp);
 
     if(!found){
-        unlink(path);//stergere fisier temporar din file system, de data asta la cazul in care nu e gasit
+        unlink(path);
         return -1;
     }
 
@@ -167,7 +155,7 @@ int remove_treasure(char *huntID, int treasureID){
 
     if(rename(path,filepath)==-1){//facem inlocuirea
         perror("ERR: Nu s-a actualizat fisierul de comori");
-        return -1; //fail
+        return -1; 
     }
 
     char statement[256];
@@ -205,12 +193,12 @@ int list_treasures(char * huntID){
     int contor = 0;
 
     printf("Comori:\n");
-    printf("%-5s %-20s %-20s %-10s\n", "ID","User", "Coordinates", "Value");//aliniere header tabel
+    printf("%-5s %-20s %-20s %-10s\n", "ID","User", "Coordinates", "Value");
 
     printf("--------------------------------------------------------\n");
 
     while(read(fd,&tr,sizeof(Treasure))==sizeof(Treasure)){
-        printf("%-5d %-15s (%-8.5f, %-8.5f) %10d\n",tr.ID,tr.username,tr.latitude,tr.longitude,tr.value);//aliniere tabel
+        printf("%-5d %-15s (%-8.5f, %-8.5f) %10d\n",tr.ID,tr.username,tr.latitude,tr.longitude,tr.value);
         contor++;
     }
 
@@ -230,8 +218,7 @@ int list_treasures(char * huntID){
     return 0;
 }
 
-//functie helper pt a gasi comoara de afisat cu view:
-int find_treasure(char* huntID, int treasureID, Treasure* tr){//pointer catre struct treasure ca sa stocam informatii in el
+int find_treasure(char* huntID, int treasureID, Treasure* tr){
     int fd = open_treasure_file(huntID, O_RDONLY);
     if(fd==-1) return -1;
     int found = 0;
@@ -250,7 +237,7 @@ int find_treasure(char* huntID, int treasureID, Treasure* tr){//pointer catre st
 
 int view_treasure(char* huntID, int treasureID){
     Treasure tr;
-    if(find_treasure(huntID, treasureID, &tr)!=0){//informatia ajunge in adresa lui tr
+    if(find_treasure(huntID, treasureID, &tr)!=0){
         printf("Comoara cu ID %d nu a fost gasita in hunt-ul %s\n",treasureID, huntID);
         return -1;
     }
@@ -272,11 +259,11 @@ int view_treasure(char* huntID, int treasureID){
 
 
 int remove_hunt(char* huntID){
-    char path[512];// cale relativa pentru continuturile fisierului
+    char path[512];
 
     char logpath[128];
     sprintf(logpath,"%s-%s", logfile, huntID);
-    unlink(logpath);//rupem symlinkul
+    unlink(logpath);
 
     struct stat st;
     if(stat(huntID,&st)!=0){
@@ -293,12 +280,11 @@ int remove_hunt(char* huntID){
     struct dirent * stdir;
     while((stdir=readdir(dr))){
         if(strcmp(stdir->d_name,".")==0||strcmp(stdir->d_name,"..")==0){
-            continue;//skip peste parinte si el insusi
+            continue;
         }
 
         sprintf(path,"%s/%s", huntID, stdir->d_name);
-        //momentan in cazul nostru, nu avem alte directoare in director, asa ca nu vom face parcurgere recursiva
-        if(remove(path)!=0){//se sterg fisierele din director
+        if(remove(path)!=0){
             perror("ERR: REMOVE");
             return -1;
         }
@@ -306,7 +292,7 @@ int remove_hunt(char* huntID){
 
     closedir(dr);
 
-    if(rmdir(huntID)==0){//se sterge directorul GOL!
+    if(rmdir(huntID)==0){
         printf("Directorul a fost sters cu SUCCES\n");
     }else{
         printf("Directorul de hunt nu a fost sters\n");
