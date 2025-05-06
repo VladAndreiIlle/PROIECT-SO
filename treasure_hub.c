@@ -33,8 +33,8 @@ void exit_monitor(int sig){
             termination = 0;
         }
     }
+    usleep(200000);
 }
-
 
 void write_command(char* command){
     int fd = open(CMD_FILE, O_WRONLY|O_CREAT|O_TRUNC, 0644);
@@ -97,8 +97,6 @@ void send_command(char* command, char* params){
         perror("Eroare trimitere SIGUSR1 la send_command");
     }
 }
-
-
 
 void stop_monitor(){
     if(!monitor_running){
@@ -166,6 +164,7 @@ int main(){
             }
         }else if(strcmp(command,"stop_monitor") == 0){
             stop_monitor();
+            usleep(200000);
         }else if(strcmp(command, "exit") == 0){
             if(monitor_running){
                 printf("ERR: monitorul inca ruleaza\n");

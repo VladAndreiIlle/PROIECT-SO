@@ -264,7 +264,7 @@ int main(){
             received = 0;
             process_command();
         }
-        usleep(1000);
+        usleep(200000);
     }
 
     printf("Monitorul se stinge ... \n");
