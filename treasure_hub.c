@@ -17,6 +17,8 @@ pid_t monitor_pid = -1;
 int monitor_running = 0;
 int termination = 0;
 
+int pfd[2];
+
 void exit_monitor(int sig){
     int status;
     pid_t pid;
@@ -24,9 +26,9 @@ void exit_monitor(int sig){
     while((pid = wait(&status)) > 0){//se asteapta sa "moara" procesul copil
         if (pid == monitor_pid) {//daca moare:
             if(WIFEXITED(status)){//iesire normala
-                printf("S-a iesit din procesul monitor cu status: %d\n", WEXITSTATUS(status));
+                printf("S-a iesit din procesul monitor cu status: %d\ntreasure_hub> ", WEXITSTATUS(status));
             }else if(WIFSIGNALED(status)){//eliminare de la un semnal
-                printf("Procesul monitor a fost terminat cu semnal: %d\n", WTERMSIG(status));
+                printf("Procesul monitor a fost terminat cu semnal: %d\ntreasure_hub> ", WTERMSIG(status));
             }
             monitor_pid = -1;
             monitor_running = 0;
@@ -61,16 +63,25 @@ void start_monitor(){
         return;
     }
 
+    if(pipe(pfd)==-1){
+        perror("ERR AT PIPE");
+        return;
+    }
+
     pid_t pid = fork();
 
     if(pid == -1){
         perror("FAIL FORK");
         return;
     }else if(pid==0){
-        execl("./monitor", "monitor", NULL);
+        close(pfd[0]);
+        char write_end[10];
+        sprintf(write_end, "%d", pfd[1]);
+        execl("./monitor", "monitor", write_end, NULL);
         perror("FAIL EXECL");
         exit(-1);
     }else{
+        close(pfd[1]);
         monitor_pid = pid;
         monitor_running = 1;
         printf("Child process initializat cu pid: %d\n", monitor_pid);
@@ -95,6 +106,16 @@ void send_command(char* command, char* params){
 
     if(kill(monitor_pid,SIGUSR1)==-1){
         perror("Eroare trimitere SIGUSR1 la send_command");
+    }
+}
+
+void read_monitor_output(){
+    char buffer[256];
+    int bytes;
+    while((bytes=read(pfd[0],buffer,sizeof(buffer)-1))>0){
+        buffer[bytes]='\0';
+        printf("%s",buffer);
+        if(bytes<255)break;
     }
 }
 
@@ -136,6 +157,7 @@ int main(){
     while(1){
         usleep(20001);
         printf("\ntreasure_hub> ");
+        
         if(fgets(command, sizeof(command), stdin) == NULL){
             break;
         }
@@ -145,11 +167,13 @@ int main(){
             start_monitor();
         }else if(strcmp(command, "list_hunts") == 0){
             send_command("list_hunts", NULL);
+            read_monitor_output();
         }else if(strcmp(command, "list_treasures") == 0){
             printf("Introduceti huntID: ");
             if(fgets(huntID, sizeof(huntID), stdin)!=NULL){
                 huntID[strcspn(huntID, "\n")] = '\0';
                 send_command("list_treasures", huntID);
+                read_monitor_output();
             }
         }else if(strcmp(command, "view_treasure")==0){
             printf("Enter hunt ID: ");
@@ -160,6 +184,7 @@ int main(){
                     treasureID[strcspn(treasureID, "\n")] = '\0';
                     sprintf(params, "%s %s", huntID, treasureID);
                     send_command("view_treasure", params);
+                    read_monitor_output();
                 }
             }
         }else if(strcmp(command,"stop_monitor") == 0){
@@ -174,6 +199,7 @@ int main(){
             }
         }else if(strcmp(command, "help")==0){
             send_command("help", NULL);
+            read_monitor_output();
         }else{
             printf("Comanda necunoscuta: %s\n", command);
         }

@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <time.h>
+#include <stdarg.h>
 
 #define CMD_FILE "command.txt"
 #define PARAM_FILE "params.txt"
@@ -28,13 +29,19 @@ int pfd = -1;
 int received = 0;
 int exit_ready = 0;
 
-void receiver(int sig){//pentru cand se primeste SIGUSR1 se va executa aceasta fucntie care seteaza var globala received pe 1
+void send_to_hub(const char* msg) {
+    if (pfd != -1) {
+        write(pfd, msg, strlen(msg));
+    }
+}
+
+void receiver(int sig){
     received = 1;
 }
 
 char* reader(char *filename){
     int fd = open(filename,O_RDONLY);
-    if(fd==-1)return NULL;
+    if(fd==-1) return NULL;
 
     char* buffer = malloc(256);
 
@@ -45,7 +52,7 @@ char* reader(char *filename){
         return NULL;
     }
 
-    buffer[bytes] = '\0';//terminatorul de sir
+    buffer[bytes] = '\0';
     buffer[strcspn(buffer,"\n")] = '\0';
     close(fd);
     return buffer;
@@ -57,7 +64,9 @@ int log_entry(char * huntID, char * statement){
 
     int fd = open(logPath, O_WRONLY|O_CREAT|O_APPEND, 0644);
     if(fd==-1) {
-        perror("ERR: Deschidere fisier log esuata");
+        char buffr[128];
+        sprintf(buffr, "ERR: Deschidere fisier log esuata\n");
+        send_to_hub(buffr);
         return -1;
     }
 
@@ -81,49 +90,63 @@ int list_treasures(char * huntID){
     struct stat st;
 
     if(stat(path,&st) == -1){
-        printf("Hunt negasit sau nu exista comori in cadrul acestuia!\n");
+        char buffr[128];
+        sprintf(buffr, "Hunt negasit sau nu exista comori in cadrul acestuia!\n");
+        send_to_hub(buffr);
         return -1;
     }
 
-    printf("Hunt:%s\n", huntID);
-    printf("Treasure file size: %ld B\n", st.st_size);
+    char buffr[256];
+    sprintf(buffr, "Hunt:%s\n", huntID);
+    send_to_hub(buffr);
+
+    sprintf(buffr, "Treasure file size: %ld B\n", st.st_size);
+    send_to_hub(buffr);
 
     char time_buff[64];
-    strftime(time_buff,sizeof(time_buff), "%Y-%m-%d %H:%M:%S", localtime(&st.st_mtime));//momentul ultimei modificari
+    strftime(time_buff,sizeof(time_buff), "%Y-%m-%d %H:%M:%S", localtime(&st.st_mtime));
 
-    printf("Momentul ultimei modificari: %s\n", time_buff);
+    sprintf(buffr, "Momentul ultimei modificari: %s\n", time_buff);
+    send_to_hub(buffr);
 
     int fd = open(path,O_RDONLY);
     if(fd==-1){
-        perror("ERR: Deschidere fisier comoara esuata");
+        char buffr[128];
+        sprintf(buffr, "ERR: Deschidere fisier comoara esuata\n");
+        send_to_hub(buffr);
         return -1;
     }
 
     Treasure tr;
     int contor = 0;
 
-    printf("Comori:\n");
-    printf("%-5s %-20s %-20s %-10s\n", "ID","User", "Coordinates", "Value");//aliniere header tabel
+    sprintf(buffr, "Comori:\n");
+    send_to_hub(buffr);
 
-    printf("--------------------------------------------------------\n");
+    sprintf(buffr, "%-5s %-20s %-20s %-10s\n", "ID","User", "Coordinates", "Value");
+    send_to_hub(buffr);
+
+    sprintf(buffr, "--------------------------------------------------------\n");
+    send_to_hub(buffr);
 
     while(read(fd,&tr,sizeof(Treasure))==sizeof(Treasure)){
-        printf("%-5d %-15s (%-8.5f, %-8.5f) %10d\n",tr.ID,tr.username,tr.latitude,tr.longitude,tr.value);//aliniere tabel
+        sprintf(buffr, "%-5d %-15s (%-8.5f, %-8.5f) %10d\n",tr.ID,tr.username,tr.latitude,tr.longitude,tr.value);
+        send_to_hub(buffr);
         contor++;
     }
 
     if(contor==0){
-        printf("Nicio comoara gasita in acest director hunt\n");
+        sprintf(buffr, "Nicio comoara gasita in acest director hunt\n");
+        send_to_hub(buffr);
     }else{
-        printf("Total comori: %d\n", contor);
+        sprintf(buffr, "Total comori: %d\n", contor);
+        send_to_hub(buffr);
     }
 
     close(fd);
 
-    char statement[128];
-    sprintf(statement, "S-au listat toate comorile din huntul cu ID %s [prin treasure_hub]", huntID);
-
-    log_entry(huntID, statement);
+    sprintf(buffr, "S-au listat toate comorile din huntul cu ID %s [prin treasure_hub]", huntID);
+    log_entry(huntID, buffr);
     return 0;
 }
 
@@ -132,12 +155,16 @@ int open_treasure_file(char *huntID, int flags){
     sprintf(filepath, "%s/%s", huntID, treasurefile);
 
     int fd = open(filepath, flags, 0644);
-    if(fd==-1) perror("ERR: Deschiderea fisierului de comori esuata");
+    if(fd==-1) {
+        char buffr[128];
+        sprintf(buffr, "ERR: Deschiderea fisierului de comori esuata\n");
+        send_to_hub(buffr);
+    }
 
     return fd;
 }
 
-int find_treasure(char* huntID, int treasureID, Treasure* tr){//pointer catre struct treasure ca sa stocam informatii in el
+int find_treasure(char* huntID, int treasureID, Treasure* tr){
     int fd = open_treasure_file(huntID, O_RDONLY);
     if(fd==-1) return -1;
     int found = 0;
@@ -159,23 +186,35 @@ int view_treasure(char* params){
     char* treasureID_string = strtok(NULL, " ");
     int treasureID = atoi(treasureID_string);
     Treasure tr;
-    if(find_treasure(huntID, treasureID, &tr)!=0){//informatia ajunge in adresa lui tr
-        printf("Comoara cu ID %d nu a fost gasita in hunt-ul %s\n",treasureID, huntID);
+    char buffr[256];
+
+    if(find_treasure(huntID, treasureID, &tr)!=0){
+        sprintf(buffr, "Comoara cu ID %d nu a fost gasita in hunt-ul %s\n",treasureID, huntID);
+        send_to_hub(buffr);
         return -1;
     }
 
-    printf("\nDetalii comoara:\n");
-    printf("ID: %d\n", tr.ID);
-    printf("Adaugata de utilizatorul: %s\n", tr.username);
-    printf("Coordonate: %.5f, %.5f\n", tr.latitude, tr.longitude);
-    printf("Valoare: %d\n", tr.value);
-    printf("Indiciu: %s\n", tr.clue);
+    sprintf(buffr, "\nDetalii comoara:\n");
+    send_to_hub(buffr);
 
-    //log entry
-    char statement[256];
-    sprintf(statement, "Comoara cu ID %d a fost vizualizata [prin treasure_hub]", treasureID);
+    sprintf(buffr, "ID: %d\n", tr.ID);
+    send_to_hub(buffr);
 
-    log_entry(huntID, statement);
+    sprintf(buffr, "Adaugata de utilizatorul: %s\n", tr.username);
+    send_to_hub(buffr);
+
+    sprintf(buffr, "Coordonate: %.5f, %.5f\n", tr.latitude, tr.longitude);
+    send_to_hub(buffr);
+
+    sprintf(buffr, "Valoare: %d\n", tr.value);
+    send_to_hub(buffr);
+
+    sprintf(buffr, "Indiciu: %s\n", tr.clue);
+    send_to_hub(buffr);
+
+    sprintf(buffr, "Comoara cu ID %d a fost vizualizata [prin treasure_hub]", treasureID);
+    log_entry(huntID, buffr);
+
     return 0;
 }
 
@@ -197,25 +236,30 @@ int count_treasures(char* filepath){
 void list_hunts(){
     DIR* huntdir = opendir(".");
     if(!huntdir){
-        perror("ERR la OPENDIR in LIST_HUNTS");
+        char buffr[128];
+        sprintf(buffr, "ERR la OPENDIR in LIST_HUNTS\n");
+        send_to_hub(buffr);
         return;
     }    
 
-    printf("###\tVANATORI\t###\n");
+    char buffr[1028];
+    sprintf(buffr, "###\tVANATORI\t###\n");
+    send_to_hub(buffr);
 
     struct dirent * hunt;
     struct stat st;
 
     while((hunt = readdir(huntdir))!=NULL){
         if(strcmp(hunt->d_name,".")==0 || strcmp(hunt->d_name,"..")==0
-            || strcmp(hunt->d_name,".git")==0)continue;
+            || strcmp(hunt->d_name,".git")==0) continue;
 
         if(stat(hunt->d_name,&st)==0 && S_ISDIR(st.st_mode)){
             char filepath[512];
             sprintf(filepath,"%s/%s",hunt->d_name,treasurefile);
             int count = count_treasures(filepath);
             if(count>=0){
-                printf("%s: %d\n", hunt->d_name, count);
+                sprintf(buffr, "%s: %d\n", hunt->d_name, count);
+                send_to_hub(buffr);
             }
         }
     }
@@ -240,9 +284,11 @@ void process_command(){
         exit_ready = 1;
         usleep(2000000);
     }else if(strcmp(command, "help")==0){
-        printf("Comenzi:\nstart_monitor, list_hunts, list_treasures, view_treasure, stop_monitor\n");    
+        send_to_hub("Comenzi:\nstart_monitor, list_hunts, list_treasures, view_treasure, stop_monitor\n");
     }else{
-        printf("Comanda necunoscuta: %s\n", command);
+        char buffr[128];
+        sprintf(buffr, "Comanda necunoscuta: %s\n", command);
+        send_to_hub(buffr);
     }
 
     free(command);
@@ -255,7 +301,9 @@ void process_command(){
 
 int main(int argc, char** argv){
     if(argc<2){
-        perror("ERR AT ARGUMENTS FOR MONITOR");
+        char buffr[128];
+        sprintf(buffr, "ERR AT ARGUMENTS FOR MONITOR\n");
+        send_to_hub(buffr);
         exit(1);
     }
 
@@ -275,6 +323,6 @@ int main(int argc, char** argv){
         usleep(200000);
     }
 
-    printf("Monitorul se stinge ... \n");
+    send_to_hub("Monitorul se stinge ... \n");
     return 0;
 }
