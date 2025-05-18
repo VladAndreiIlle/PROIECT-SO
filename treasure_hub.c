@@ -6,6 +6,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 
 //voi folosi fisiere intermediare pt a comunica intre hub si copil(treasure_monitor)
@@ -25,17 +27,13 @@ void exit_monitor(int sig){
 
     while((pid = wait(&status)) > 0){//se asteapta sa "moara" procesul copil
         if (pid == monitor_pid) {//daca moare:
-            if(WIFEXITED(status)){//iesire normala
-                printf("S-a iesit din procesul monitor cu status: %d\ntreasure_hub> ", WEXITSTATUS(status));
-            }else if(WIFSIGNALED(status)){//eliminare de la un semnal
-                printf("Procesul monitor a fost terminat cu semnal: %d\ntreasure_hub> ", WTERMSIG(status));
-            }
+            printf("Proces monitor oprit cu status %d\n", status);
             monitor_pid = -1;
             monitor_running = 0;
             termination = 0;
         }
     }
-    usleep(200000);
+    usleep(200);
 }
 
 void write_command(char* command){
@@ -115,8 +113,66 @@ void read_monitor_output(){
     while((bytes=read(pfd[0],buffer,sizeof(buffer)-1))>0){
         buffer[bytes]='\0';
         printf("%s",buffer);
+        fflush(stdout);
         if(bytes<255)break;
     }
+}
+
+void calculate_score(){
+    DIR*dir=opendir(".");
+    if(!dir)return;
+    struct dirent*entry;
+    struct stat st;
+
+    while(monitor_running){
+        usleep(1000000);
+    }
+    while((entry=readdir(dir))!=NULL){
+
+        if(strcmp(entry->d_name,".")==0||strcmp(entry->d_name,"..")==0)continue;
+        
+        if(stat(entry->d_name,&st)==0&&S_ISDIR(st.st_mode)){
+            char path[512];
+            snprintf(path,sizeof(path),"%s/treasures",entry->d_name);
+            int fd=open(path,O_RDONLY);
+        
+            if(fd==-1)continue;
+        
+            close(fd);
+        
+            int pipefd[2];
+        
+            if(pipe(pipefd)==-1)continue;
+        
+            pid_t pid=fork();
+            if(pid==-1){
+                close(pipefd[0]);
+                close(pipefd[1]);
+                continue;
+            }
+
+            if(pid==0){
+                close(pipefd[0]);
+                dup2(pipefd[1],STDOUT_FILENO);
+                close(pipefd[1]);
+                execl("./calculate_score","calculate_score",path,NULL);
+                exit(1);
+            }else{
+                close(pipefd[1]);
+                char buffer[256];
+                int bytes;
+                printf("Score pentru hunt %s:\n",entry->d_name);
+                while((bytes=read(pipefd[0],buffer,sizeof(buffer)-1))>0){
+                    buffer[bytes]='\0';
+                    printf("%s",buffer);
+                }
+                close(pipefd[0]);
+                waitpid(pid,NULL,0);//**** */
+                printf("\n");
+            }
+        }
+    }
+    closedir(dir);
 }
 
 void stop_monitor(){
@@ -152,10 +208,10 @@ int main(){
     sigaction(SIGCHLD,&sa,NULL);
 
     printf("||\tTREASURE HUB\t||\n");
-    printf("Comenzi: start_monitor, list_hunts, list_treasures, view_treasure, stop_monitor, exit\n");
+    printf("Comenzi: start_monitor, list_hunts, list_treasures, view_treasure, calculate_score, stop_monitor, exit\n");
 
     while(1){
-        usleep(20001);
+        usleep(2000);
         printf("\ntreasure_hub> ");
         
         if(fgets(command, sizeof(command), stdin) == NULL){
@@ -167,7 +223,6 @@ int main(){
             start_monitor();
         }else if(strcmp(command, "list_hunts") == 0){
             send_command("list_hunts", NULL);
-            read_monitor_output();
         }else if(strcmp(command, "list_treasures") == 0){
             printf("Introduceti huntID: ");
             if(fgets(huntID, sizeof(huntID), stdin)!=NULL){
@@ -187,9 +242,14 @@ int main(){
                     read_monitor_output();
                 }
             }
-        }else if(strcmp(command,"stop_monitor") == 0){
+        }else if(strcmp(command, "calculate_score")==0){
             stop_monitor();
-            usleep(200000);
+            sleep(3);
+            printf("\n");
+            calculate_score();
+        }
+        else if(strcmp(command,"stop_monitor") == 0){
+            stop_monitor();
         }else if(strcmp(command, "exit") == 0){
             if(monitor_running){
                 printf("ERR: monitorul inca ruleaza\n");

@@ -242,9 +242,9 @@ void list_hunts(){
         return;
     }    
 
-    char buffr[1028];
-    sprintf(buffr, "###\tVANATORI\t###\n");
-    send_to_hub(buffr);
+    //char buffr[1028];
+    printf("###\tVANATORI\t###\n");
+    //send_to_hub(buffr);
 
     struct dirent * hunt;
     struct stat st;
@@ -258,8 +258,8 @@ void list_hunts(){
             sprintf(filepath,"%s/%s",hunt->d_name,treasurefile);
             int count = count_treasures(filepath);
             if(count>=0){
-                sprintf(buffr, "%s: %d\n", hunt->d_name, count);
-                send_to_hub(buffr);
+                printf("%s: %d comori\n", hunt->d_name, count);
+                //send_to_hub(buffr);
             }
         }
     }
@@ -282,9 +282,9 @@ void process_command(){
         view_treasure(params);
     }else if(strcmp(command, "stop") == 0){
         exit_ready = 1;
-        usleep(2000000);
+        //usleep(2000000);
     }else if(strcmp(command, "help")==0){
-        send_to_hub("Comenzi:\nstart_monitor, list_hunts, list_treasures, view_treasure, stop_monitor\n");
+        send_to_hub("Comenzi:\nstart_monitor, list_hunts, list_treasures, view_treasure, calculate_score, stop_monitor, exit\n");
     }else{
         char buffr[128];
         sprintf(buffr, "Comanda necunoscuta: %s\n", command);
@@ -296,7 +296,7 @@ void process_command(){
         free(params);
     }
 
-    usleep(200);
+    usleep(2000000);
 }
 
 int main(int argc, char** argv){
@@ -320,7 +320,7 @@ int main(int argc, char** argv){
             received = 0;
             process_command();
         }
-        usleep(200000);
+        usleep(20000);
     }
 
     send_to_hub("Monitorul se stinge ... \n");

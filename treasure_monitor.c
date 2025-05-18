@@ -1,4 +1,4 @@
-#include <stdio.h>
+/*#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -277,4 +277,4 @@ int main(int argc, char** argv){
 
     printf("Monitorul se stinge ... \n");
     return 0;
-}
+}*/
