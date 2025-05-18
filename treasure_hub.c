@@ -9,7 +9,6 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
-
 //voi folosi fisiere intermediare pt a comunica intre hub si copil(treasure_monitor)
 #define CMD_FILE "command.txt"
 //pentru parametrii comenzilor(daca e cazul, parametrii sunt in felul urmator: pt view_treasures este nevoie de huntID)
@@ -38,20 +37,20 @@ void exit_monitor(int sig){
 
 void write_command(char* command){
     int fd = open(CMD_FILE, O_WRONLY|O_CREAT|O_TRUNC, 0644);
-    if(fd==-1){
+    if(fd == -1){
         perror("OPEN FUNCTION FAIL CMD");
         return;
     }
-    write(fd,command,strlen(command));
+    write(fd, command, strlen(command));
     close(fd);
 }
 
 void write_params(char* params){
     int fd = open(PARAM_FILE, O_WRONLY|O_CREAT|O_TRUNC, 0644);
-    if(fd==-1){
+    if(fd == -1){
         perror("OPEN FUNCTION FAIL PARAM");
     }
-    write(fd,params,strlen(params));
+    write(fd, params, strlen(params));
     close(fd);
 }
 
@@ -61,7 +60,7 @@ void start_monitor(){
         return;
     }
 
-    if(pipe(pfd)==-1){
+    if(pipe(pfd) == -1){
         perror("ERR AT PIPE");
         return;
     }
@@ -71,15 +70,17 @@ void start_monitor(){
     if(pid == -1){
         perror("FAIL FORK");
         return;
-    }else if(pid==0){
+    }else if(pid == 0){
         close(pfd[0]);
+        
         char write_end[10];
         sprintf(write_end, "%d", pfd[1]);
+        
         execl("./monitor", "monitor", write_end, NULL);
         perror("FAIL EXECL");
         exit(-1);
     }else{
-        close(pfd[1]);
+        close(pfd[1]); 
         monitor_pid = pid;
         monitor_running = 1;
         printf("Child process initializat cu pid: %d\n", monitor_pid);
@@ -98,76 +99,76 @@ void send_command(char* command, char* params){
     }
 
     write_command(command);
-    if(params!=NULL){
+    if(params != NULL){
         write_params(params);
     }
 
-    if(kill(monitor_pid,SIGUSR1)==-1){
+    if(kill(monitor_pid, SIGUSR1) == -1){
         perror("Eroare trimitere SIGUSR1 la send_command");
     }
 }
 
 void read_monitor_output(){
-    char buffer[256];
+    char buffer[2048];
     int bytes;
-    while((bytes=read(pfd[0],buffer,sizeof(buffer)-1))>0){
-        buffer[bytes]='\0';
-        printf("%s",buffer);
+    
+    while((bytes = read(pfd[0], buffer, sizeof(buffer) - 1)) > 0){
+        buffer[bytes] = '\0';
+        printf("%s", buffer);
         fflush(stdout);
-        if(bytes<255)break;
+        if(bytes < 2047) break;
     }
 }
 
 void calculate_score(){
-    DIR*dir=opendir(".");
-    if(!dir)return;
-    struct dirent*entry;
+    DIR* dir = opendir(".");
+    if(!dir) return;
+    struct dirent* entry;
     struct stat st;
 
     while(monitor_running){
         usleep(1000000);
     }
-    while((entry=readdir(dir))!=NULL){
-
-        if(strcmp(entry->d_name,".")==0||strcmp(entry->d_name,"..")==0)continue;
+    
+    while((entry = readdir(dir)) != NULL){
+        if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
         
-        if(stat(entry->d_name,&st)==0&&S_ISDIR(st.st_mode)){
+        if(stat(entry->d_name, &st) == 0 && S_ISDIR(st.st_mode)){
             char path[512];
-            snprintf(path,sizeof(path),"%s/treasures",entry->d_name);
-            int fd=open(path,O_RDONLY);
+            snprintf(path, sizeof(path), "%s/treasures", entry->d_name);
+            int fd = open(path, O_RDONLY);
         
-            if(fd==-1)continue;
-        
+            if(fd == -1) continue;
             close(fd);
         
             int pipefd[2];
         
-            if(pipe(pipefd)==-1)continue;
+            if(pipe(pipefd) == -1) continue;
         
-            pid_t pid=fork();
-            if(pid==-1){
+            pid_t pid = fork();
+            if(pid == -1){
                 close(pipefd[0]);
                 close(pipefd[1]);
                 continue;
             }
 
-            if(pid==0){
+            if(pid == 0){
                 close(pipefd[0]);
-                dup2(pipefd[1],STDOUT_FILENO);
+                dup2(pipefd[1], STDOUT_FILENO);
                 close(pipefd[1]);
-                execl("./calculate_score","calculate_score",path,NULL);
+                execl("./calculate_score", "calculate_score", path, NULL);
                 exit(1);
             }else{
                 close(pipefd[1]);
                 char buffer[256];
                 int bytes;
-                printf("Score pentru hunt %s:\n",entry->d_name);
-                while((bytes=read(pipefd[0],buffer,sizeof(buffer)-1))>0){
-                    buffer[bytes]='\0';
-                    printf("%s",buffer);
+                printf("Score pentru hunt %s:\n", entry->d_name);
+                while((bytes = read(pipefd[0], buffer, sizeof(buffer) - 1)) > 0){
+                    buffer[bytes] = '\0';
+                    printf("%s", buffer);
                 }
                 close(pipefd[0]);
-                waitpid(pid,NULL,0);//**** */
+                waitpid(pid, NULL, 0);
                 printf("\n");
             }
         }
@@ -187,7 +188,7 @@ void stop_monitor(){
     }
 
     write_command("stop");
-    if(kill(monitor_pid,SIGUSR1)==-1){
+    if(kill(monitor_pid, SIGUSR1) == -1){
         perror("Eroare trimitere SIGUSR1 la stop_monitor");
     }else{
         termination = 1;
@@ -205,7 +206,7 @@ int main(){
     sa.sa_handler = exit_monitor;
     sa.sa_flags = SA_RESTART;
 
-    sigaction(SIGCHLD,&sa,NULL);
+    sigaction(SIGCHLD, &sa, NULL);
 
     printf("||\tTREASURE HUB\t||\n");
     printf("Comenzi: start_monitor, list_hunts, list_treasures, view_treasure, calculate_score, stop_monitor, exit\n");
@@ -223,14 +224,15 @@ int main(){
             start_monitor();
         }else if(strcmp(command, "list_hunts") == 0){
             send_command("list_hunts", NULL);
+            read_monitor_output();
         }else if(strcmp(command, "list_treasures") == 0){
             printf("Introduceti huntID: ");
-            if(fgets(huntID, sizeof(huntID), stdin)!=NULL){
+            if(fgets(huntID, sizeof(huntID), stdin) != NULL){
                 huntID[strcspn(huntID, "\n")] = '\0';
                 send_command("list_treasures", huntID);
                 read_monitor_output();
             }
-        }else if(strcmp(command, "view_treasure")==0){
+        }else if(strcmp(command, "view_treasure") == 0){
             printf("Enter hunt ID: ");
             if(fgets(huntID, sizeof(huntID), stdin) != NULL){
                 huntID[strcspn(huntID, "\n")] = '\0';
@@ -242,13 +244,13 @@ int main(){
                     read_monitor_output();
                 }
             }
-        }else if(strcmp(command, "calculate_score")==0){
+        }else if(strcmp(command, "calculate_score") == 0){
             stop_monitor();
             sleep(3);
             printf("\n");
             calculate_score();
         }
-        else if(strcmp(command,"stop_monitor") == 0){
+        else if(strcmp(command, "stop_monitor") == 0){
             stop_monitor();
         }else if(strcmp(command, "exit") == 0){
             if(monitor_running){
@@ -257,7 +259,7 @@ int main(){
                 printf("Proces incheiat\n");
                 break;
             }
-        }else if(strcmp(command, "help")==0){
+        }else if(strcmp(command, "help") == 0){
             send_command("help", NULL);
             read_monitor_output();
         }else{
